@@ -18,7 +18,6 @@ use grammers_client::client::UpdatesConfiguration;
 use grammers_client::update::Update;
 use grammers_mtsender::SenderPool;
 use grammers_session::storages::SqliteSession;
-use grammers_session::types::PeerRef;
 use simple_logger::SimpleLogger;
 use tokio::task::JoinSet;
 use tokio::{runtime, time::sleep};
@@ -33,14 +32,13 @@ async fn handle_update(client: Client, update: Update) {
             let peer = message.peer().unwrap();
             println!(
                 "Responding to {}",
-                peer.name()
-                    .unwrap_or(&format!("id {}", message.peer_ref().id.bot_api_dialog_id()))
+                peer.name().unwrap_or(&format!("id {}", message.peer_id()))
             );
             if message.text() == "slow" {
                 sleep(Duration::from_secs(5)).await;
             }
             if let Err(e) = client
-                .send_message(PeerRef::from(peer), message.text())
+                .send_message(peer.to_ref().unwrap(), message.text())
                 .await
             {
                 println!("Failed to respond! {e}");

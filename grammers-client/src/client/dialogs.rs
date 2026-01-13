@@ -11,10 +11,11 @@ use grammers_session::types::{PeerKind, PeerRef, UpdateState};
 use grammers_tl_types as tl;
 
 use super::{Client, IterBuffer};
-use crate::peer::{Dialog, PeerMap};
+use crate::peer::Dialog;
 
 const MAX_LIMIT: usize = 100;
 
+/// Iterator returned by [`Client::iter_dialogs`].
 pub type DialogIter = IterBuffer<tl::functions::messages::GetDialogs, Dialog>;
 
 impl DialogIter {
@@ -83,8 +84,7 @@ impl DialogIter {
             }
         };
 
-        let peers = PeerMap::new(users, chats);
-        self.client.cache_peers_maybe(&peers);
+        let peers = self.client.build_peer_map(users, chats);
 
         self.buffer.extend(dialogs.into_iter().map(|dialog| {
             if let tl::enums::Dialog::Dialog(tl::types::Dialog {
@@ -101,7 +101,7 @@ impl DialogIter {
                         pts: *pts,
                     });
             }
-            Dialog::new(&self.client, dialog, &mut messages, &peers)
+            Dialog::new(&self.client, dialog, &mut messages, peers.handle())
         }));
 
         // Don't bother updating offsets if this is the last time stuff has to be fetched.
@@ -116,8 +116,7 @@ impl DialogIter {
                 self.request.offset_date = last_message.date_timestamp();
                 self.request.offset_id = last_message.id();
             }
-            self.request.offset_peer =
-                PeerRef::from(self.buffer[self.buffer.len() - 1].peer()).into();
+            self.request.offset_peer = self.buffer[self.buffer.len() - 1].peer_ref().into();
         }
 
         Ok(self.pop_item())
@@ -158,6 +157,9 @@ impl Client {
     /// For groups and channels, this is the same as leaving said chat. This method does **not**
     /// delete the chat itself (the chat still exists and the other members will remain inside).
     ///
+    /// Bot accounts can use this method to leave a channel or group, but attempting
+    /// to leave the dialog with a user will fail, as bots do not actually have dialogs.
+    ///
     /// # Examples
     ///
     /// ```
@@ -176,7 +178,6 @@ impl Client {
             .await
             .map(drop)
         } else if peer.id.kind() == PeerKind::Chat {
-            // TODO handle PEER_ID_INVALID and ignore it (happens when trying to delete deactivated chats)
             self.invoke(&tl::functions::messages::DeleteChatUser {
                 chat_id: peer.into(),
                 user_id: tl::enums::InputUser::UserSelf,
@@ -185,7 +186,6 @@ impl Client {
             .await
             .map(drop)
         } else {
-            // TODO only do this if we're not a bot
             self.invoke(&tl::functions::messages::DeleteHistory {
                 just_clear: false,
                 revoke: false,

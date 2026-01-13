@@ -7,10 +7,9 @@
 // except according to those terms.
 
 use std::fmt;
-use std::sync::Arc;
 
 use grammers_mtsender::InvocationError;
-use grammers_session::types::{PeerAuth, PeerId, PeerRef};
+use grammers_session::types::{PeerId, PeerRef};
 use grammers_session::updates::State;
 use grammers_tl_types as tl;
 
@@ -26,7 +25,7 @@ pub struct InlineSend {
     pub raw: tl::enums::Update,
     pub state: State,
     pub(crate) client: Client,
-    pub(crate) peers: Arc<PeerMap>,
+    pub(crate) peers: PeerMap,
 }
 
 impl InlineSend {
@@ -42,22 +41,21 @@ impl InlineSend {
         self.update().query.as_str()
     }
 
-    /// The reference to the user that chose the result.
-    pub fn sender_ref(&self) -> PeerRef {
-        let id = PeerId::user(self.update().user_id);
-        match self.client.0.session.peer(id) {
-            Some(info) => info.into(),
-            None => PeerRef {
-                id,
-                auth: PeerAuth::default(),
-            },
-        }
+    /// The [`Self::sender`]'s identifier.
+    pub fn sender_id(&self) -> PeerId {
+        PeerId::user(self.update().user_id)
     }
 
-    /// The user that chose the result.
-    pub fn sender(&self) -> &User {
-        match self.peers.get(self.sender_ref().id).unwrap() {
-            Peer::User(user) => user,
+    /// Cached reference to the [`Self::sender`], if it is in cache.
+    pub fn sender_ref(&self) -> Option<PeerRef> {
+        self.peers.get_ref(self.sender_id())
+    }
+
+    /// The user that chose the result, if it is in cache.
+    pub fn sender(&self) -> Option<&User> {
+        match self.peers.get(self.sender_id()) {
+            Some(Peer::User(user)) => Some(user),
+            None => None,
             _ => unreachable!(),
         }
     }
@@ -88,7 +86,7 @@ impl InlineSend {
 
         Ok(Some(
             self.client
-                .edit_inline_message(msg_id, input_message)
+                .edit_inline_message(msg_id, input_message.into())
                 .await?,
         ))
     }

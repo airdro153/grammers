@@ -6,9 +6,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use std::sync::Arc;
-
-use grammers_session::types::PeerId;
+use grammers_session::types::{PeerId, PeerRef};
 use grammers_tl_types as tl;
 
 use super::{Peer, PeerMap};
@@ -37,7 +35,7 @@ impl Dialog {
         client: &Client,
         dialog: tl::enums::Dialog,
         messages: &mut Vec<tl::enums::Message>,
-        peers: &Arc<PeerMap>,
+        peers: PeerMap,
     ) -> Self {
         // TODO helper utils (ext trait?) to extract data from dialogs or messages
         let peer_id = match dialog {
@@ -57,12 +55,23 @@ impl Dialog {
 
         Self {
             last_message: message
-                .map(|m| Message::from_raw(client, m, Some((&peer).into()), peers)),
+                .map(|m| Message::from_raw(client, m, peer.to_ref(), peers.handle())),
             peer,
             raw: dialog,
         }
     }
 
+    /// The [`Self::peer`]'s identifier.
+    pub fn peer_id(&self) -> PeerId {
+        self.peer.id()
+    }
+
+    /// Cached reference to the [`Self::peer`].
+    pub fn peer_ref(&self) -> PeerRef {
+        self.peer.to_ref().unwrap()
+    }
+
+    /// The peer represented by this dialog.
     pub fn peer(&self) -> &Peer {
         &self.peer
     }
